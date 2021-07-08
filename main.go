@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"encoding/hex"
+	"flag"
 	"fmt"
 	"io"
 	"os"
@@ -12,32 +13,36 @@ import (
 
 func main() {
 
-	if len(os.Args) == 1 {
+	hexPtr := flag.Bool("x", false, "Output hexdump")
+    flag.Parse()
+	args := flag.Args()
+
+	if len(args) == 0 {
 		info, err := os.Stdin.Stat()
 		if err != nil {
 			panic(err)
 		}
 
 		if info.Mode()&os.ModeCharDevice != 0 || info.Size() <= 0 {
-			fmt.Println("Hexdump erlang lists/strings, e.g. [72,101,108,108,111]")
+			fmt.Println("Print erlang lists/strings, e.g. [72,101,108,108,111]")
+			fmt.Println("Specify the [-x] flag to see output as a hexdump.")
 			fmt.Println("The command works with pipes or files.")
-			fmt.Println("Usage: cat file | erldump")
+			fmt.Println("Usage: cat file | erldump [-h]")
 			fmt.Println("Usage: erldump file")
 			return
 		}
 
-		parse(bufio.NewReader(os.Stdin))
-		return
-	}
-
-	for _, fn := range os.Args[1:] {
-		if reader, err := os.Open(fn); err == nil {
-			parse(reader)
+		parse(bufio.NewReader(os.Stdin), *hexPtr)
+	} else {
+		for _, fn := range args {
+			if reader, err := os.Open(fn); err == nil {
+				parse(reader, *hexPtr)
+			}
 		}
 	}
 }
 
-func parse(reader io.Reader) {
+func parse(reader io.Reader, hexdump bool) {
 	scanner := bufio.NewScanner(reader)
 	scanner.Split(bufio.ScanLines)
 
@@ -47,10 +52,22 @@ func parse(reader io.Reader) {
 	for scanner.Scan() {
 		for _, n := range rex.Split(scanner.Text(), -1) {
 			if i, err := strconv.Atoi(n); err == nil {
-				src = append(src, uint8(i))
+				if hexdump {
+					src = append(src, uint8(i))
+				} else {
+					if i >= 32 && i < 127 {
+						src = append(src, uint8(i))
+					} else {
+						src = append(src, 46) // 46 is "."
+					}
+				}
 			}
 		}
 	}
 
-	fmt.Println(hex.Dump(src))
+	if hexdump {
+		fmt.Println(hex.Dump(src))
+	} else {
+		fmt.Println(string(src))
+	}
 }
